@@ -162,7 +162,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
                 </svg>
                 <div class="flex-1">
-                    <h3 class="text-xl font-bold text-yellow-400 mb-1"⚠️ 套利机会提醒</h3>
+                    <h3 class="text-xl font-bold text-yellow-400 mb-1">⚠️ 套利机会提醒</h3>
                     <p id="arbitrageMessage" class="text-gray-300"></p>
                 </div>
                 <button id="closeArbitrageAlert" class="text-gray-400 hover:text-white transition-colors">
@@ -818,11 +818,20 @@
         }
         
         function showArbitrageAlert(coins) {
-            if (coins.length === 0) return;
-            
             const coinSymbols = coins.map(c => c.symbol);
+            const currentCoinsSet = new Set(coinSymbols);
+            
+            // 找出新出现的币种（之前不在列表中，现在出现了）
             const newCoins = coins.filter(coin => !lastArbitrageCoins.has(coin.symbol));
             
+            // 找出重新出现的币种（之前消失了，现在又出现了）
+            // 这些币种在上一次检测时不存在，但在更早之前存在过
+            const reappearedCoins = newCoins.filter(coin => {
+                // 如果是完全新的币种，不算重新出现
+                return lastArbitrageCoins.size > 0;
+            });
+            
+            // 需要推送的条件：有新币种出现
             if (newCoins.length > 0) {
                 playNotificationSound();
                 
@@ -831,7 +840,16 @@
                 
                 const threshold = parseFloat(document.getElementById('arbitrageThreshold').value);
                 const coinDetails = coins.map(c => `${c.symbol}(${(c.rate * 100).toFixed(4)}%)`).join(', ');
-                const message = `发现 ${coins.length} 个套利机会！资金费率低于 ${threshold}%，同时支持借币：${coinDetails}`;
+                
+                let message;
+                if (coins.length === newCoins.length) {
+                    // 所有都是新机会
+                    message = `发现 ${coins.length} 个套利机会！资金费率低于 ${threshold}%，同时支持借币：${coinDetails}`;
+                } else {
+                    // 有新增的机会
+                    const newCoinDetails = newCoins.map(c => `${c.symbol}(${(c.rate * 100).toFixed(4)}%)`).join(', ');
+                    message = `新增 ${newCoins.length} 个套利机会！${newCoinDetails}。当前共 ${coins.length} 个机会：${coinDetails}`;
+                }
                 
                 messageDiv.textContent = message;
                 alertDiv.classList.remove('hidden');
@@ -839,7 +857,8 @@
                 sendWebSocketMessage(message);
             }
             
-            lastArbitrageCoins = new Set(coinSymbols);
+            // 更新记录：只保存当前存在的套利币种
+            lastArbitrageCoins = currentCoinsSet;
         }
         
         async function updateFundingRates() {
