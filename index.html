@@ -698,12 +698,15 @@
                     .filter(ticker => ticker.fundingRate && parseFloat(ticker.fundingRate) < 0)
                     .map(ticker => {
                         const fundingRate = parseFloat(ticker.fundingRate);
-                        const fundingInterval = 8;
-                        const rate8h = fundingRate;
+                        // 获取实际的资金费率结算周期（小时）
+                        const fundingInterval = parseFloat(ticker.fundingIntervalHour || 8);
+                        // 将资金费率标准化为8小时周期，便于比较
+                        const rate8h = fundingRate * (8 / fundingInterval);
                         
                         return {
                             symbol: ticker.symbol,
                             fundingRate: fundingRate,
+                            fundingInterval: fundingInterval,
                             rate8h: rate8h,
                             lastPrice: ticker.lastPrice,
                             price24hPcnt: ticker.price24hPcnt
@@ -721,33 +724,42 @@
         
         function renderFundingRateCard(item, index) {
             const rate8hPercent = (item.rate8h * 100).toFixed(4);
-            const priceChange = parseFloat(item.price24hPcnt || 0);
-            const priceChangeColor = priceChange >= 0 ? 'text-green-400' : 'text-red-400';
-            const priceChangeSign = priceChange >= 0 ? '+' : '';
-            const isArbitrage = item.isArbitrage ? 'arbitrage-highlight' : '';
-            const arbitrageBadge = item.isArbitrage ? '<span class="absolute -top-2 -right-2 bg-yellow-500 text-black text-xs font-bold px-2 py-1 rounded-full">套利</span>' : '';
+            const actualRatePercent = (item.fundingRate * 100).toFixed(4);
+            const priceChange = (parseFloat(item.price24hPcnt) * 100).toFixed(2);
+            const priceChangeClass = parseFloat(priceChange) >= 0 ? 'text-green-400' : 'text-red-400';
+            const priceChangeSign = parseFloat(priceChange) >= 0 ? '+' : '';
+            
+            const arbitrageBadge = item.isArbitrage ? 
+                '<span class="ml-2 px-2 py-1 bg-yellow-500 text-gray-900 text-xs font-bold rounded">套利</span>' : '';
+            
+            // 显示实际结算周期
+            const intervalText = item.fundingInterval === 8 ? '8h' : `${item.fundingInterval}h`;
             
             return `
-                <div class="relative bg-gray-800/80 rounded-lg p-4 border border-gray-700 hover:border-red-500 transition-all duration-200 fade-in ${isArbitrage}">
-                    ${arbitrageBadge}
-                    <div class="flex items-start justify-between mb-2">
-                        <div class="flex items-center space-x-2">
-                            <span class="text-lg font-bold text-white">#${index + 1}</span>
-                            <span class="text-lg font-semibold text-blue-400">${item.symbol.replace('USDT', '')}</span>
+                <div class="bg-gray-800 rounded-lg p-4 hover:bg-gray-750 transition-colors duration-200 ${item.isArbitrage ? 'arbitrage-highlight' : ''}">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center">
+                            <span class="text-gray-400 text-sm">#${index + 1}</span>
+                            <span class="ml-2 text-white font-bold text-lg">${item.symbol.replace('USDT', '')}</span>
+                            ${arbitrageBadge}
                         </div>
                     </div>
                     <div class="space-y-1">
                         <div class="flex justify-between items-center">
-                            <span class="text-xs text-gray-400">8h费率:</span>
-                            <span class="text-sm font-bold text-red-400">${rate8hPercent}%</span>
+                            <span class="text-gray-400 text-sm">8h累计费率:</span>
+                            <span class="text-red-400 font-semibold">${rate8hPercent}%</span>
                         </div>
                         <div class="flex justify-between items-center">
-                            <span class="text-xs text-gray-400">价格:</span>
-                            <span class="text-sm text-gray-300">$${parseFloat(item.lastPrice).toLocaleString()}</span>
+                            <span class="text-gray-400 text-sm">实际费率(${intervalText}):</span>
+                            <span class="text-orange-400 text-sm">${actualRatePercent}%</span>
                         </div>
                         <div class="flex justify-between items-center">
-                            <span class="text-xs text-gray-400">24h:</span>
-                            <span class="text-sm font-semibold ${priceChangeColor}">${priceChangeSign}${(priceChange * 100).toFixed(2)}%</span>
+                            <span class="text-gray-400 text-sm">价格:</span>
+                            <span class="text-white text-sm">$${parseFloat(item.lastPrice).toFixed(3)}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400 text-sm">24h:</span>
+                            <span class="${priceChangeClass} text-sm font-semibold">${priceChangeSign}${priceChange}%</span>
                         </div>
                     </div>
                 </div>
