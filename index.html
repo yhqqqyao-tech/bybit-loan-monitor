@@ -346,6 +346,7 @@
         let fundingRateData = [];
         let currentSortOrder = null;
         let lastArbitrageCoins = new Set();
+        let lastHighFundingCoins = new Set();
         let ws = null;
         let wsReconnectTimer = null;
         let pushEnabled = false;
@@ -829,6 +830,28 @@
             return arbitrageCoins;
         }
         
+        function checkHighFundingRates(fundingRates) {
+            const highFundingCoins = [];
+            const highThreshold = 0.02; // 2%的8小时累计费率绝对值
+            
+            fundingRates.forEach(item => {
+                const rate8h = parseFloat(item.rate8h);
+                
+                // 检查8小时累计费率绝对值是否大于2%
+                if (Math.abs(rate8h) > highThreshold) {
+                    const coinSymbol = item.symbol.replace('USDT', '');
+                    highFundingCoins.push({
+                        symbol: coinSymbol,
+                        rate8h: rate8h,
+                        fundingRate: item.fundingRate,
+                        fundingInterval: item.fundingInterval
+                    });
+                }
+            });
+            
+            return highFundingCoins;
+        }
+        
         function showArbitrageAlert(coins) {
             const coinSymbols = coins.map(c => c.symbol);
             const currentCoinsSet = new Set(coinSymbols);
@@ -873,11 +896,61 @@
             lastArbitrageCoins = currentCoinsSet;
         }
         
+        function showHighFundingAlert(coins) {
+            const coinSymbols = coins.map(c => c.symbol);
+            const currentCoinsSet = new Set(coinSymbols);
+            
+            // 找出新出现的高资金费币种
+            const newCoins = coins.filter(coin => !lastHighFundingCoins.has(coin.symbol));
+            
+            // 需要推送的条件：有新币种出现
+            if (newCoins.length > 0) {
+                playNotificationSound();
+                
+                const alertDiv = document.getElementById('arbitrageAlert');
+                const messageDiv = document.getElementById('arbitrageMessage');
+                
+                const coinDetails = coins.map(c => {
+                    const rate8hPercent = (c.rate8h * 100).toFixed(4);
+                    const actualRatePercent = (c.fundingRate * 100).toFixed(4);
+                    return `${c.symbol}(8h累计:${rate8hPercent}%, ${c.fundingInterval}h费率:${actualRatePercent}%)`;
+                }).join(', ');
+                
+                let message;
+                if (coins.length === newCoins.length) {
+                    // 所有都是新的高资金费
+                    message = `⚠️ 高资金费预警！发现 ${coins.length} 个币种8h累计费率绝对值超过2%：${coinDetails}`;
+                } else {
+                    // 有新增的高资金费
+                    const newCoinDetails = newCoins.map(c => {
+                        const rate8hPercent = (c.rate8h * 100).toFixed(4);
+                        return `${c.symbol}(${rate8hPercent}%)`;
+                    }).join(', ');
+                    message = `⚠️ 高资金费预警！新增 ${newCoins.length} 个币种：${newCoinDetails}。当前共 ${coins.length} 个高费率币种`;
+                }
+                
+                messageDiv.textContent = message;
+                alertDiv.classList.remove('hidden');
+                
+                sendWebSocketMessage(message);
+            }
+            
+            // 更新记录：只保存当前存在的高资金费币种
+            lastHighFundingCoins = currentCoinsSet;
+        }
+        
         async function updateFundingRates() {
             try {
                 const data = await fetchFundingRates();
                 fundingRateData = data;
                 
+                // 检查高资金费率（不需要借币列表）
+                const highFundingCoins = checkHighFundingRates(data);
+                if (highFundingCoins.length > 0) {
+                    showHighFundingAlert(highFundingCoins);
+                }
+                
+                // 检查套利机会（需要借币列表）
                 if (allCoinsData.length > 0) {
                     const arbitrageCoins = checkArbitrageOpportunities(data, allCoinsData);
                     if (arbitrageCoins.length > 0) {
@@ -1279,3 +1352,4 @@
     </script>
 </body>
 </html>
+
