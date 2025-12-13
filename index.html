@@ -445,6 +445,28 @@
         const API_BASE = 'https://api.bybit.com';
         const UPDATE_INTERVAL = 60000;
         
+        // Binance 支持的活期质押借币币种列表
+        const BINANCE_LOAN_COINS = new Set([
+            'AGLD', 'HOOK', 'APT', 'IOTX', 'SHIB', 'XVG', 'RAY', 'NEAR', 'FLOW', 'WLD',
+            'ETHFI', 'COMP', 'FDUSD', 'MEME', 'STX', 'SLP', 'ZRO', 'PYTH', 'MBOX', 'ID',
+            'RUNE', 'PENGU', 'ZRX', 'BCH', 'SUI', 'IO', 'CAKE', 'DOT', 'BAND', 'HOT',
+            'POL', 'ASTR', 'GMT', '1INCH', 'TWT', 'RSR', 'BTC', 'IOTA', 'AR', 'ARB',
+            'ZK', 'AVAX', 'LISTA', 'TON', 'SEI', 'USUAL', 'TURBO', 'BB', 'KNC', 'A',
+            'MAV', 'JTO', 'NEIRO', 'RENDER', 'SUSHI', 'ALGO', 'ARKM', 'ATOM', 'PENDLE', 'SC',
+            'S', 'CFX', 'ONT', 'W', 'SNX', 'SFP', 'BTTC', 'RDNT', 'ACA', 'ACE',
+            'MANA', 'JUP', 'ACH', 'ROSE', 'MINA', 'DAI', 'TIA', 'SOL', 'ACT', 'FET',
+            'ETC', 'DODO', 'WOO', 'ICP', '1MBABYDOGE', 'ETH', 'NEO', 'ZEC', 'CELO', 'AUCTION',
+            'MANTA', 'LRC', 'STRK', 'ADA', 'VIRTUAL', 'POLYX', 'ZEN', 'HIGH', 'TAO', 'VET',
+            'PAXG', 'ALT', 'DOGE', 'USDT', 'SXP', 'HBAR', 'RVN', 'CHR', 'SAGA', 'PEPE',
+            'SPK', 'ILV', 'CHZ', 'EDU', 'XRP', 'DOGS', 'JASMY', 'FLOKI', 'TRX', 'SAND',
+            'KAVA', 'C98', 'OSMO', 'USTC', 'STRAX', 'IMX', 'WIF', 'TUSD', 'VANA', 'ENA',
+            'TKO', 'EGLD', 'LTC', 'USDC', 'TRUMP', 'THETA', 'ENJ', 'AEVO', 'INJ', 'CRV',
+            'EURI', 'GRT', 'DYDX', 'FLUX', 'ENS', 'MASK', 'AAVE', 'UNI', '1000SATS', 'BONK',
+            'QNT', 'LDO', 'MAGIC', 'XLM', 'LINK', 'CKB', 'LUNC', 'OM', 'LUNA', 'XTZ',
+            'CYBER', 'OP', 'SUPER', 'KSM', 'FIL', 'RIF', 'GALA', 'PIXEL', 'BAT', 'MOVE',
+            'HMSTR', 'APE', 'YGG', 'AXS', 'ZIL', 'ARPA', 'COTI'
+        ]);
+        
         function playNotificationSound() {
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const oscillator = audioContext.createOscillator();
@@ -890,7 +912,7 @@
         }
         
         function checkArbitrageOpportunities(fundingRates, loanCoins) {
-            const loanCoinSymbols = new Set(loanCoins.map(coin => coin.currency));
+            const bybitLoanCoinSymbols = new Set(loanCoins.map(coin => coin.currency));
             const arbitrageCoins = [];
             const threshold = parseFloat(document.getElementById('arbitrageThreshold').value) / 100;
             
@@ -898,13 +920,27 @@
                 const coinSymbol = item.symbol.replace('USDT', '');
                 const fundingRate = parseFloat(item.fundingRate);
                 
-                if (loanCoinSymbols.has(coinSymbol)) {
+                // 检查是否在 Bybit 或 Binance 支持列表中
+                const supportedByBybit = bybitLoanCoinSymbols.has(coinSymbol);
+                const supportedByBinance = BINANCE_LOAN_COINS.has(coinSymbol);
+                
+                if (supportedByBybit || supportedByBinance) {
                     item.isArbitrage = true;
                     
                     if (fundingRate <= threshold) {
+                        let exchangeSupport = '';
+                        if (supportedByBybit && supportedByBinance) {
+                            exchangeSupport = 'Bybit+Binance';
+                        } else if (supportedByBybit) {
+                            exchangeSupport = 'Bybit';
+                        } else {
+                            exchangeSupport = 'Binance';
+                        }
+                        
                         arbitrageCoins.push({
                             symbol: coinSymbol,
-                            rate: fundingRate
+                            rate: fundingRate,
+                            exchange: exchangeSupport
                         });
                     }
                 }
@@ -957,15 +993,48 @@
                 const messageDiv = document.getElementById('arbitrageMessage');
                 
                 const threshold = parseFloat(document.getElementById('arbitrageThreshold').value);
-                const coinDetails = coins.map(c => `${c.symbol}(${(c.rate * 100).toFixed(4)}%)`).join(', ');
+                
+                // 按交易所分组
+                const bybitOnly = coins.filter(c => c.exchange === 'Bybit');
+                const binanceOnly = coins.filter(c => c.exchange === 'Binance');
+                const both = coins.filter(c => c.exchange === 'Bybit+Binance');
+                
+                let coinDetails = '';
+                if (both.length > 0) {
+                    coinDetails += `【Bybit+Binance都支持】${both.map(c => `${c.symbol}(${(c.rate * 100).toFixed(4)}%)`).join(', ')}`;
+                }
+                if (bybitOnly.length > 0) {
+                    if (coinDetails) coinDetails += ' ';
+                    coinDetails += `【仅Bybit支持】${bybitOnly.map(c => `${c.symbol}(${(c.rate * 100).toFixed(4)}%)`).join(', ')}`;
+                }
+                if (binanceOnly.length > 0) {
+                    if (coinDetails) coinDetails += ' ';
+                    coinDetails += `【仅Binance支持】${binanceOnly.map(c => `${c.symbol}(${(c.rate * 100).toFixed(4)}%)`).join(', ')}`;
+                }
                 
                 let message;
                 if (coins.length === newCoins.length) {
                     // 所有都是新机会
-                    message = `发现 ${coins.length} 个套利机会！资金费率低于 ${threshold}%，同时支持借币：${coinDetails}`;
+                    message = `发现 ${coins.length} 个套利机会！资金费率低于 ${threshold}%，支持活期质押借币：${coinDetails}`;
                 } else {
                     // 有新增的机会
-                    const newCoinDetails = newCoins.map(c => `${c.symbol}(${(c.rate * 100).toFixed(4)}%)`).join(', ');
+                    const newBybitOnly = newCoins.filter(c => c.exchange === 'Bybit');
+                    const newBinanceOnly = newCoins.filter(c => c.exchange === 'Binance');
+                    const newBoth = newCoins.filter(c => c.exchange === 'Bybit+Binance');
+                    
+                    let newCoinDetails = '';
+                    if (newBoth.length > 0) {
+                        newCoinDetails += `【Bybit+Binance都支持】${newBoth.map(c => `${c.symbol}(${(c.rate * 100).toFixed(4)}%)`).join(', ')}`;
+                    }
+                    if (newBybitOnly.length > 0) {
+                        if (newCoinDetails) newCoinDetails += ' ';
+                        newCoinDetails += `【仅Bybit支持】${newBybitOnly.map(c => `${c.symbol}(${(c.rate * 100).toFixed(4)}%)`).join(', ')}`;
+                    }
+                    if (newBinanceOnly.length > 0) {
+                        if (newCoinDetails) newCoinDetails += ' ';
+                        newCoinDetails += `【仅Binance支持】${newBinanceOnly.map(c => `${c.symbol}(${(c.rate * 100).toFixed(4)}%)`).join(', ')}`;
+                    }
+                    
                     message = `新增 ${newCoins.length} 个套利机会！${newCoinDetails}。当前共 ${coins.length} 个机会：${coinDetails}`;
                 }
                 
@@ -1435,3 +1504,4 @@
     </script>
 </body>
 </html>
+
